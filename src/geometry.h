@@ -123,6 +123,14 @@ class Geometry : public QObject
                                double longitudinalScale, double* distance = 0,
                                std::string* info = 0) const = 0;
 
+        /// Convert vertices in a sphere with classification `class1` to `class2`
+        ///
+        /// `centre` and `radius` specify the selection sphere.  Any vertices
+        /// of classification `class1` will be converted to classification
+        /// `class2`.  Other classifications are left untouched.
+        virtual void selectVerticesInSphere(const V3d& centre, double radius,
+                                            int class1, int class2) {}
+
         //--------------------------------------------------
         /// Get file name describing the source of the geometry
         const QString& fileName() const { return m_fileName; }

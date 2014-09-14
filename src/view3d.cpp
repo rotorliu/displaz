@@ -27,10 +27,14 @@
 View3D::View3D(GeometryCollection* geometries, QWidget *parent)
     : QGLWidget(parent),
     m_camera(false, false),
+    m_mouseDragged(false),
     m_prevMousePos(0,0),
     m_mouseButton(Qt::NoButton),
     m_cursorPos(0),
     m_prevCursorSnap(0),
+    m_selectionRadius(1),
+    m_selectionClassFrom(0),
+    m_selectionClassTo(1),
     m_backgroundColor(60, 50, 50),
     m_drawBoundingBoxes(true),
     m_drawCursor(true),
@@ -189,6 +193,8 @@ void View3D::initializeGL()
     m_meshFaceShader->setShaderFromSourceFile("shaders:meshface.glsl");
     m_meshEdgeShader.reset(new ShaderProgram(context()));
     m_meshEdgeShader->setShaderFromSourceFile("shaders:meshedge.glsl");
+    m_selectionSphereShader.reset(new ShaderProgram(context()));
+    m_selectionSphereShader->setShaderFromSourceFile("shaders:selection_sphere.glsl");
     m_incrementalFramebuffer = allocIncrementalFramebuffer(width(), height());
     const GeometryCollection::GeometryVec& geoms = m_geometries->get();
     for (size_t i = 0; i < geoms.size(); ++i)
@@ -298,6 +304,7 @@ void View3D::paintGL()
     // Draw overlay stuff, including cursor position.
     if (m_drawCursor)
     {
+        drawSelectionSphere(transState, m_cursorPos, m_selectionRadius);
         drawCursor(transState, m_cursorPos, 10, 1);
         //drawCursor(transState, m_camera.center(), 10);
     }
@@ -346,12 +353,13 @@ void View3D::drawMeshes(const TransformState& transState,
 void View3D::mousePressEvent(QMouseEvent* event)
 {
     m_mouseButton = event->button();
+    m_mouseDragged = false;
     m_prevMousePos = event->pos();
 
+    const double snapScale = 0.025;
     if (event->button() == Qt::MidButton ||
         (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ShiftModifier)))
     {
-        double snapScale = 0.025;
         QString pointInfo;
         V3d newPos = snapToGeometry(guessClickPosition(event->pos()), snapScale,
                                     pointInfo);
@@ -367,24 +375,42 @@ void View3D::mousePressEvent(QMouseEvent* event)
         m_camera.setCenter(newPos);
         m_prevCursorSnap = newPos;
     }
+    else if (event->button() == Qt::LeftButton &&
+             (event->modifiers() & Qt::ControlModifier))
+    {
+        QString pointInfo;
+        V3d newPos = snapToGeometry(guessClickPosition(event->pos()), snapScale,
+                                    pointInfo);
+        m_cursorPos = newPos;
+        m_prevCursorSnap = newPos;
+        updateGL();
+    }
 }
 
 
 void View3D::mouseMoveEvent(QMouseEvent* event)
 {
+    m_mouseDragged = true;
     if (m_mouseButton == Qt::MidButton)
         return;
-    bool zooming = m_mouseButton == Qt::RightButton;
-    if(event->modifiers() & Qt::ControlModifier)
+    if (event->modifiers() & Qt::ControlModifier)
     {
-        m_cursorPos = m_camera.mouseMovePoint(m_cursorPos,
-                                              event->pos() - m_prevMousePos,
-                                              zooming);
+        if (m_mouseButton == Qt::LeftButton)
+        {
+            m_cursorPos = m_camera.mouseMovePoint(m_cursorPos,
+                                event->pos() - m_prevMousePos, false);
+        }
+        else
+        {
+            double dy = (event->pos() - m_prevMousePos).y();
+            m_selectionRadius *= exp(-4.0*dy/height());
+        }
         restartRender();
     }
     else
     {
-        m_camera.mouseDrag(m_prevMousePos, event->pos(), zooming);
+        m_camera.mouseDrag(m_prevMousePos, event->pos(),
+                           m_mouseButton == Qt::RightButton);
     }
     m_prevMousePos = event->pos();
 }
@@ -404,8 +430,37 @@ void View3D::keyPressEvent(QKeyEvent *event)
         // Centre camera on current cursor location
         m_camera.setCenter(m_cursorPos);
     }
+    else if(event->key() == Qt::Key_T)
+    {
+        std::swap(m_selectionClassFrom, m_selectionClassTo);
+    }
+    else if(event->key() == Qt::Key_Space)
+    {
+        QModelIndexList sel = m_selectionModel->selectedRows();
+        for (int i = 0; i < sel.size(); ++i)
+        {
+            m_geometries->get()[sel[i].row()]->selectVerticesInSphere(
+                    m_cursorPos, m_selectionRadius,
+                    m_selectionClassFrom, m_selectionClassTo);
+        }
+        restartRender();
+    }
     else
         event->ignore();
+}
+
+
+/// Draw a selection sphere at given `center` and `radius`
+///
+/// `transState` represents the camera and model transforms
+void View3D::drawSelectionSphere(const TransformState& transState,
+                                 const V3d& center, double radius) const
+{
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    drawSphere(transState, center, radius,
+               m_selectionSphereShader->shaderProgram().programId(), Imath::C4f(1,1,1,0.5));
+    glDisable(GL_BLEND);
 }
 
 
