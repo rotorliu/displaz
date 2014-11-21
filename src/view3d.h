@@ -105,7 +105,8 @@ class View3D : public QGLWidget
     private:
         std::unique_ptr<QGLFramebufferObject> allocIncrementalFramebuffer(int w, int h) const;
 
-        void drawCursor(const TransformState& transState, const V3d& P) const;
+        void drawCursor(const TransformState& transState, const V3d& P,
+                        float cursorRadius) const;
 
         DrawCount drawPoints(const TransformState& transState,
                              const std::vector<const Geometry*>& geoms,
