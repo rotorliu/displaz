@@ -34,6 +34,8 @@ class PointArray : public Geometry
                                     const TransformState& transState,
                                     double quality, bool incrementalDraw) const;
 
+        virtual void saveFile(QString fileName);
+
         virtual size_t pointCount() const { return m_npoints; }
 
         virtual void estimateCost(const TransformState& transState,
