@@ -80,6 +80,8 @@ class View3D : public QGLWidget
     private:
         std::unique_ptr<QGLFramebufferObject> allocIncrementalFramebuffer(int w, int h) const;
 
+        void selectVerticesInSphere(const V3d& center, double radius);
+
         void drawSelectionSphere(const TransformState& transState,
                                  const V3d& center, double radius) const;
 
@@ -93,7 +95,8 @@ class View3D : public QGLWidget
         void drawMeshes(const TransformState& transState,
                         const std::vector<const Geometry*>& geoms) const;
 
-        Imath::V3d guessClickPosition(const QPoint& clickPos);
+        Imath::V3d guessClickPosition(const QPoint& clickPos,
+                                      const V3d& refPos);
 
         Imath::V3d snapToGeometry(const Imath::V3d& pos, double normalScaling,
                                   QString& pointInfo);
