@@ -98,8 +98,8 @@ class View3D : public QGLWidget
         Imath::V3d guessClickPosition(const QPoint& clickPos,
                                       const V3d& refPos);
 
-        Imath::V3d snapToGeometry(const Imath::V3d& pos, double normalScaling,
-                                  QString& pointInfo);
+        bool snapToGeometry(const Imath::V3d& pos, double normalScaling,
+                            Imath::V3d& newPos, QString* pointInfo = 0);
 
         std::vector<const Geometry*> selectedGeometry() const;
 

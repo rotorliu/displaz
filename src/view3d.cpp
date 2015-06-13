@@ -356,33 +356,39 @@ void View3D::mousePressEvent(QMouseEvent* event)
     m_mouseDragged = false;
     m_prevMousePos = event->pos();
 
-    const double snapScale = 0.025;
     if (event->button() == Qt::MidButton ||
         (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ShiftModifier)))
     {
         QString pointInfo;
-        V3d newPos = snapToGeometry(guessClickPosition(event->pos(), m_camera.center()),
-                                    snapScale, pointInfo);
-        V3d posDiff = newPos - m_prevCursorSnap;
-        g_logger.info("Selected Point Attributes:\n"
-                      "%s"
-                      "diff with previous = %.3f\n"
-                      "vector diff = %.3f",
-                      pointInfo, posDiff.length(), posDiff);
-        // Snap cursor /and/ camera to new position
-        // TODO: Decouple these, but in a sensible way
-        m_cursorPos = newPos;
-        m_camera.setCenter(newPos);
-        m_prevCursorSnap = newPos;
+        // Guess 3D click point with reference point of interest between camera
+        // position & camera rotation center.  This works pretty well, except
+        // when there are noise points intervening along the ray.
+        V3d refPos = 0.7*m_camera.position() + 0.3*m_camera.center();
+        V3d guessedClick3D = guessClickPosition(event->pos(), refPos);
+        V3d newPos;
+        const double snapScale = 0.025;
+        if (snapToGeometry(guessedClick3D, snapScale, newPos, &pointInfo))
+        {
+            V3d posDiff = newPos - m_prevCursorSnap;
+            g_logger.info("Selected Point Attributes:\n"
+                          "%s"
+                          "diff with previous = %.3f\n"
+                          "vector diff = %.3f",
+                          pointInfo, posDiff.length(), posDiff);
+            // Snap cursor /and/ camera to new position
+            // TODO: Decouple these, but in a sensible way
+            m_cursorPos = newPos;
+            m_camera.setCenter(newPos);
+            m_prevCursorSnap = newPos;
+        }
     }
     else if (event->button() == Qt::LeftButton &&
              (event->modifiers() & Qt::ControlModifier))
     {
         // Start selecting points
         // FIXME: Refactor with associated code inside mouseMoveEvent()
-        QString pointInfo;
-        V3d newPos = snapToGeometry(guessClickPosition(event->pos(), m_cursorPos),
-                                    1, pointInfo);
+        V3d newPos = guessClickPosition(event->pos(), m_cursorPos);
+        snapToGeometry(newPos, 1, newPos);
         m_cursorPos = newPos;
         m_prevCursorSnap = newPos;
         selectVerticesInSphere(m_cursorPos, m_selectionRadius);
@@ -402,14 +408,12 @@ void View3D::mouseMoveEvent(QMouseEvent* event)
             // Select points
             m_cursorPos = m_camera.mouseMovePoint(m_cursorPos,
                                 event->pos() - m_prevMousePos, false);
-            QString pointInfo;
+            V3d newPos = guessClickPosition(event->pos(), m_cursorPos);
             // No along-ray scaling during click+drag point selection.  This
             // ensures that you can paint a single layer of a multi-layer
             // structure without snapping onto the layer behind or in front.
             const double snapScale = 1;
-            // FIXME: This is much too slow on large data sets to be done per frame!
-            V3d newPos = snapToGeometry(guessClickPosition(event->pos(), m_cursorPos),
-                                        snapScale, pointInfo);
+            snapToGeometry(newPos, snapScale, newPos);
             if ((newPos - m_prevCursorSnap).length() != 0)
             {
                 // Only snap cursor if we went to a new point.  This
@@ -624,9 +628,7 @@ DrawCount View3D::drawPoints(const TransformState& transState,
 Imath::V3d View3D::guessClickPosition(const QPoint& clickPos, const V3d& refPos)
 {
     // Get new point in the projected coordinate system using the click
-    // position x,y and the z of the reference position.  Take the reference to
-    // be the camera rotation center since that's likely to be roughly the
-    // depth the user is interested in.
+    // position x,y and the z of the reference position.
     M44d mat = m_camera.viewMatrix()*m_camera.projectionMatrix()*m_camera.viewportMatrix();
     double refZ = (refPos * mat).z;
     V3d newPointProj(clickPos.x(), clickPos.y(), refZ);
@@ -639,33 +641,39 @@ Imath::V3d View3D::guessClickPosition(const QPoint& clickPos, const V3d& refPos)
 ///
 /// `normalScaling` - Distance along the camera direction will be scaled by
 ///                   this factor when computing the closest point.
-Imath::V3d View3D::snapToGeometry(const Imath::V3d& pos, double normalScaling,
-                                  QString& pointInfo)
+/// `newPos`        - Returned new position
+/// `pointInfo`     - Return for descriptive string of point attributes, or
+///                   NULL.
+///
+/// Returns true if a close piece of geometry was found, false otherwise.
+bool View3D::snapToGeometry(const Imath::V3d& pos, double normalScaling,
+                            Imath::V3d& newPos, QString* pointInfo)
 {
-    if (m_geometries->get().empty())
-        return pos;
     // Ray out from the camera to the given point
     V3d cameraPos = m_camera.position();
     V3d viewDir = (pos - cameraPos).normalized();
-    V3d newPos(0);
     double nearestDist = DBL_MAX;
     // Snap cursor to position of closest point and center on it
     QModelIndexList sel = m_selectionModel->selectedRows();
     for (int i = 0; i < sel.size(); ++i)
     {
         int geomIdx = sel[i].row();
+        V3d pickedVertex;
         double dist = 0;
         std::string info;
-        V3d p = m_geometries->get()[geomIdx]->pickVertex(cameraPos, pos, viewDir,
-                                                         normalScaling, &dist, &info);
-        if (dist < nearestDist)
+        if(m_geometries->get()[geomIdx]->pickVertex(cameraPos, pos, viewDir, normalScaling,
+                                                    pickedVertex, &dist, pointInfo ? &info : 0))
         {
-            newPos = p;
-            nearestDist = dist;
-            pointInfo = QString::fromStdString(info);
+            if (dist < nearestDist)
+            {
+                newPos = pickedVertex;
+                nearestDist = dist;
+                if (pointInfo)
+                    *pointInfo = QString::fromStdString(info);
+            }
         }
     }
-    return newPos;
+    return nearestDist < DBL_MAX;
 }
 
 
