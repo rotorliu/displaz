@@ -385,8 +385,9 @@ void View3D::mousePressEvent(QMouseEvent* event)
     else if (event->button() == Qt::LeftButton &&
              (event->modifiers() & Qt::ControlModifier))
     {
-        // Start selecting points
-        // FIXME: Refactor with associated code inside mouseMoveEvent()
+        // Start selecting points, or select with a single click.  Snaps to the
+        // closest point under the mouse, with depth close to current cursor
+        // position.
         V3d newPos = guessClickPosition(event->pos(), m_cursorPos);
         snapToGeometry(newPos, 1, newPos);
         m_cursorPos = newPos;
@@ -409,19 +410,24 @@ void View3D::mouseMoveEvent(QMouseEvent* event)
             m_cursorPos = m_camera.mouseMovePoint(m_cursorPos,
                                 event->pos() - m_prevMousePos, false);
             V3d newPos = guessClickPosition(event->pos(), m_cursorPos);
-            // No along-ray scaling during click+drag point selection.  This
-            // ensures that you can paint a single layer of a multi-layer
-            // structure without snapping onto the layer behind or in front.
-            const double snapScale = 1;
-            snapToGeometry(newPos, snapScale, newPos);
-            if ((newPos - m_prevCursorSnap).length() != 0)
+            // Find closest point on geometry to current 3D cursor
+            V3d snapPos;
+            if (snapToGeometry(newPos, 1, snapPos))
             {
-                // Only snap cursor if we went to a new point.  This
-                // prevents the cursor getting stuck on a single point.
-                m_cursorPos = newPos;
-                m_prevCursorSnap = newPos;
-                selectVerticesInSphere(m_cursorPos, m_selectionRadius);
+                // Snap only the cursor depth to the geometry; let x,y
+                // position be controlled smoothly by the mouse.
+                V3d v = (newPos - m_camera.position()).normalized();
+                double snapDepth = v.dot(snapPos - m_camera.position());
+                newPos = m_camera.position() + snapDepth*v;
+                if ((snapPos - m_prevCursorSnap).length() != 0)
+                {
+                    // Only snap cursor if we went to a new point to prevent
+                    // cursor getting stuck on a single point.
+                    m_cursorPos = newPos;
+                    m_prevCursorSnap = snapPos;
+                }
             }
+            selectVerticesInSphere(m_cursorPos, m_selectionRadius);
         }
         else
         {
