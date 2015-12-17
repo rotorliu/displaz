@@ -1,8 +1,14 @@
 module Displaz
 using Compat
 
-# Quick and nasty matlab-like plotting interface
-export plot3d, plot3d!, plot, clf, hold
+# New interface
+export plot3d, plot3d!
+export clearplot
+
+# Quick and nasty matlab-like plotting interface, now deprecated
+#
+# Will be removed soon!
+export plot, clf, hold
 
 
 # Convert julia array into a type name and type appropriate for putting in the
@@ -164,12 +170,20 @@ function newfigure()
     figure(id)
 end
 
+# Dataset support
+immutable DataSet
+    label::AbstractString
+    id::ASCIIString
+end
+
+Base.show(io::IO, dataset::DataSet) = print(io, "DataSet(label=\"$(dataset.label)\")")
+
 
 """
 Plot 3D points or lines on a new plot
 
 ```
-  plot3d([plotobj,] position; attr1=value1, ...)
+  plot3d([window,] position; attr1=value1, ...)
 ```
 
 The `position` array should be a 3xN array of vertex positions. (This is
@@ -177,7 +191,7 @@ consistent with treating the components of a single point as a column vector.
 It also has the same memory layout as an array of short `Vector3` instances
 from ImmutableArrays, for example).
 
-The `plotobj` argument is optional and determines which plot window to send the
+The `window` argument is optional and determines which plot window to send the
 data to.  If it's not used the data will be sent to the plot window returned
 by `current()`.
 
@@ -233,7 +247,7 @@ When plotting lines, the `linebreak` keyword argument can be used to break the
 position array into multiple line segments.  Each index in the line break array
 is the initial index of a line segment.
 """
-function plot3d(plotobj::DisplazWindow, position; color=[1,1,1], markersize=[0.1], markershape=[0],
+function plot3d(window::DisplazWindow, position; color=[1,1,1], markersize=[0.1], markershape=[0],
                 label=nothing, linebreak=[1], _clear_before_plot=true)
     nvertices = size(position, 2)
     color = interpret_color(color)
@@ -274,18 +288,22 @@ function plot3d(plotobj::DisplazWindow, position; color=[1,1,1], markersize=[0.1
         label = "$seriestype [$nvertices vertices]"
     end
     addopt = _clear_before_plot ? [] : "-add"
-    run(`displaz -script $addopt -server $(plotobj.name) -dataname $label -shader generic_points.glsl -rmtemp $filename`)
-    nothing
+    # Ugly hack: Ensure displaz has started already - this seems necessary to
+    # work around an obscure julia bug (?) which causes readall() to hang
+    # waiting for data.
+    run(`displaz -script -server $(window.name) -shader generic_points.glsl`)
+    id = readall(`displaz -script $addopt -server $(window.name) -dataname $label -shader generic_points.glsl -rmtemp $filename`)
+    DataSet(label, strip(id))
 end
 
 
 """
-Add points or lines to an existing 3D plot
+Add points or lines to an existing 3D plot window
 
-See plot3d for documentation
+See plot3d() for documentation
 """
-function plot3d!(plotobj::DisplazWindow, position; kwargs...)
-    plot3d(plotobj, position; _clear_before_plot=false, kwargs...)
+function plot3d!(window::DisplazWindow, position; kwargs...)
+    plot3d(window, position; _clear_before_plot=false, kwargs...)
 end
 
 
@@ -293,6 +311,19 @@ end
 plot3d!(position; kwargs...) = plot3d!(current(), position; kwargs...)
 plot3d(position; kwargs...)  = plot3d(current(), position; kwargs...)
 
+"""
+    clearplot([window,] [dataset1,]...)
+
+Remove datasets from `window` which defaults to `current()` if not provided.  A
+list of specific `DataSet` identifiers may also be given; if none are, clear
+everything.
+"""
+function clearplot(window::DisplazWindow, datasets...)
+    ids = [d.id for d in datasets]
+    run(`displaz -server $(window.name) -clear $ids`)
+    nothing
+end
+clearplot(datasets::DataSet...) = clearplot(current(), datasets...)
 
 #-------------------------------------------------------------------------------
 # Deprecated junk
@@ -317,7 +348,7 @@ function hold(h)
 end
 
 function clf()
-    Base.depwarn("clf() is deprecated.  Use plot3d() to make a new plot, and plot3d!() to add to an existing one", :clf)
+    Base.depwarn("clf() is deprecated.  Use clearplot()", :clf)
     run(`displaz -clear`)
     nothing
 end
