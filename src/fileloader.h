@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QObject>
 #include <QStringList>
+#include <QUuid>
 
 #include "geometry.h"
 #include "qtlogger.h"
@@ -20,6 +21,7 @@ struct FileLoadInfo
 {
     QString filePath;     /// Path to the file on disk
     QString dataSetName;  /// Human readable name of the dataset
+    GeometryId   id;      /// Unique identifier for the dataset in memory
     bool deleteAfterLoad; /// Delete file after load - for use with temporary files.
 
     FileLoadInfo() : deleteAfterLoad(false) {}
@@ -27,6 +29,7 @@ struct FileLoadInfo
                  bool deleteAfterLoad_ = false)
         : filePath(filePath_),
         dataSetName(dataSetName_),
+        id(QUuid::createUuid()),
         deleteAfterLoad(deleteAfterLoad_)
     {
         if (dataSetName.isEmpty())
@@ -63,15 +66,19 @@ class FileLoader : public QObject
         /// If `loadInfo.deleteAfterLoad` is true, *delete* the file after loading.
         /// This is here so that temporary files typically loaded via a socket
         /// can be deleted in a clean way.
-        void loadFile(const FileLoadInfo& loadInfo)
+        ///
+        /// Return a id which can be used to later refer to the dataset
+        GeometryId loadFile(const FileLoadInfo& loadInfo)
         {
             asyncLoadFile(loadInfo, false);
+            return loadInfo.id;
         }
 
         /// Reload file `loadInfo.filePath` asynchronously.  Threadsafe.
-        void reloadFile(const FileLoadInfo& loadInfo)
+        GeometryId reloadFile(const FileLoadInfo& loadInfo)
         {
             asyncLoadFile(loadInfo, true);
+            return loadInfo.id;
         }
 
     signals:
@@ -104,6 +111,7 @@ class FileLoader : public QObject
         {
             std::shared_ptr<Geometry> geom = Geometry::create(loadInfo.filePath);
             geom->setName(loadInfo.dataSetName);
+            geom->setId(loadInfo.id);
             connect(geom.get(), SIGNAL(loadProgress(int)),
                     this, SIGNAL(loadProgress(int)));
             connect(geom.get(), SIGNAL(loadStepStarted(QString)),

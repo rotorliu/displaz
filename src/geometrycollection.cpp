@@ -21,6 +21,20 @@ void GeometryCollection::clear()
     }
 }
 
+bool GeometryCollection::erase(GeometryId id)
+{
+    for (size_t i = 0; i < m_geometries.size(); ++i)
+    {
+        if (m_geometries[i]->id() == id)
+        {
+            emit beginRemoveRows(QModelIndex(), i, i);
+            m_geometries.erase(m_geometries.begin()+i);
+            emit endRemoveRows();
+            return true;
+        }
+    }
+    return false;
+}
 
 int GeometryCollection::rowCount(const QModelIndex & parent) const
 {

@@ -359,6 +359,7 @@ void PointViewerMainWindow::handleMessage(QByteArray message)
     if (commandTokens[0] == "OPEN_FILES")
     {
         QList<QByteArray> flags = commandTokens[1].split('\0');
+        QByteArray response;
         if (flags.contains("CLEAR"))
             m_geometries->clear();
         bool rmTemp = flags.contains("RMTEMP");
@@ -371,12 +372,36 @@ void PointViewerMainWindow::handleMessage(QByteArray message)
                                QString(commandTokens[i]));
                 continue;
             }
-            m_fileLoader->loadFile(FileLoadInfo(pathAndName[0], pathAndName[1], rmTemp));
+            GeometryId id = m_fileLoader->loadFile(FileLoadInfo(pathAndName[0], pathAndName[1], rmTemp));
+            response += id.toByteArray() + "\n";
         }
+        // Yuckity yuck!
+        IpcChannel* channel = dynamic_cast<IpcChannel*>(sender());
+        if (!channel)
+        {
+            qWarning() << "Signalling object not a IpcChannel!\n";
+            return;
+        }
+        // Remove some uuid formatting guff to lessen chance that they
+        // collide with shell special chars.
+        //response.replace("{", "");
+        //response.replace("}", "");
+        //response.replace("-", "");
+        channel->sendMessage(response);
     }
-    else if (commandTokens[0] == "CLEAR_FILES")
+    else if (commandTokens[0] == "CLEAR_DATASETS")
     {
-        m_geometries->clear();
+        if (commandTokens.size() == 1)
+        {
+            m_geometries->clear();
+            return;
+        }
+        for (int i = 1; i < commandTokens.size(); ++i)
+        {
+            GeometryId id(commandTokens[i]);
+            if (!m_geometries->erase(id))
+                g_logger.error("Socket interface: bad geometry id \"%s\"", QString(commandTokens[i]));
+        }
     }
     else if (commandTokens[0] == "SET_VIEW_ANGLES")
     {

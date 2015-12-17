@@ -30,6 +30,11 @@ class GeometryCollection : public QAbstractListModel
         /// Remove all geometries from the list
         void clear();
 
+        /// Remove identified geometry from list
+        ///
+        /// Return true if the geometry was found, false otherwise.
+        bool erase(GeometryId id);
+
         // Following implemented from QAbstractListModel:
         virtual int rowCount(const QModelIndex & parent = QModelIndex()) const;
         virtual QVariant data(const QModelIndex & index, int role = Qt::DisplayRole) const;

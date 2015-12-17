@@ -87,13 +87,14 @@ int main(int argc, char *argv[])
         "-shader %s",    &shaderName,    "Name of shader file to load on startup",
         "-viewangles %F %F %F", &yaw, &pitch, &roll, "Set view angles in degrees [yaw, pitch, roll]",
         "-viewradius %F", &viewRadius,   "Set distance to view point",
-        "-clear",        &clearFiles,    "Remote: clear all currently loaded files",
+        "-clear",        &clearFiles,    "Remote: clear all currently loaded data sets (default) or specified uuids",
         "-quit",         &quitRemote,    "Remote: close the existing displaz window",
         "-add",          &addFiles,      "Remote: add files to currently open set",
         "-rmtemp",       &rmTemp,        "*Delete* files after loading - use with caution to clean up single-use temporary files after loading",
         "-querycursor",  &queryCursor,   "Query 3D cursor location from displaz instance",
         "-script",       &script,        "Script mode: enable several settings which are useful when calling displaz from a script:"
-                                         " (a) do not wait for displaz GUI to exit before returning,",
+                                         " (a) do not wait for displaz GUI to exit before returning,"
+                                         " (b) return identifier for each plotted data set on the command line",
 
         "<SEPARATOR>", "\nAdditional information:",
         "-version",      &printVersion,  "Print version number",
@@ -185,7 +186,7 @@ int main(int argc, char *argv[])
     //
     // TODO: Factor out this socket comms code - sending and recieving of
     // messages should happen in a centralised place.
-    if (!g_initialFileNames.empty())
+    if (!clearFiles && !g_initialFileNames.empty())
     {
         QByteArray command;
         QDir currentDir = QDir::current();
@@ -210,10 +211,20 @@ int main(int argc, char *argv[])
             command += QByteArray(dataSetName.data(), (int)dataSetName.size());
         }
         channel->sendMessage(command);
+        QByteArray msg = channel->receiveMessage();
+        if (script)
+            std::cout.write(msg.data(), msg.length());
     }
     if (clearFiles)
     {
-        channel->sendMessage("CLEAR_FILES");
+        QByteArray command = "CLEAR_DATASETS";
+        // Each "initial file" is actually a dataset id here.
+        for (size_t i = 0; i < g_initialFileNames.size(); ++i)
+        {
+            command += "\n";
+            command += QString::fromStdString(g_initialFileNames[i].filePath).toUtf8();
+        }
+        channel->sendMessage(command);
     }
     if (yaw != -DBL_MAX)
     {

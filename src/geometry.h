@@ -12,6 +12,7 @@
 #include "util.h"
 #include <QString>
 #include <QMetaType>
+#include <QUuid>
 
 class ShaderProgram;
 class QGLShaderProgram;
@@ -38,6 +39,8 @@ struct DrawCount
 };
 
 
+typedef QUuid GeometryId;
+
 /// Shared interface for all displaz geometry types
 class Geometry : public QObject
 {
@@ -52,6 +55,9 @@ class Geometry : public QObject
 
         /// Set user-defined name for the geometry
         void setName(const QString& name) { m_name = name; }
+
+        /// Set unique id for the geometry
+        void setId(const GeometryId& id) { m_id = id; }
 
         //--------------------------------------------------
         /// Load geometry from file
@@ -134,6 +140,9 @@ class Geometry : public QObject
         /// Get the arbitrary user-defined name for the geometry.
         const QString& name() const { return m_name; }
 
+        /// Get the unique id for the geometry
+        GeometryId id() const { return m_id; }
+
         /// Get file name describing the source of the geometry
         const QString& fileName() const { return m_fileName; }
 
@@ -183,6 +192,7 @@ class Geometry : public QObject
 
     private:
         QString m_name;
+        GeometryId m_id;
         QString m_fileName;
         V3d m_offset;
         V3d m_centroid;
